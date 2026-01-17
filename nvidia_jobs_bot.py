@@ -29,10 +29,10 @@ def send_telegram(msg):
 
 def main():
     payload = {
-        "limit": 20,
-        "offset": 0,
-        "searchText": ""
-    }
+    "limit": 50,
+    "offset": 0,
+    "searchText": "Yokneam Israel"
+}
 
     r = requests.post(WORKDAY_URL, json=payload)
     jobs = r.json().get("jobPostings", [])
@@ -41,6 +41,9 @@ def main():
     new = []
 
     for job in jobs:
+        text = (job.get("title","") + " " + str(job.get("bulletFields",""))).lower()
+if "israel" not in text or "yokneam" not in text:
+    continue
         jid = job.get("externalPath")
         title = job.get("title")
         if jid and jid not in seen:
