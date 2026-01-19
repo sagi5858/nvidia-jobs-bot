@@ -1,22 +1,21 @@
 import requests
-import json
 import os
+import json
+from bs4 import BeautifulSoup
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 SEEN_FILE = "seen_jobs.json"
 
-# JSON ציבורי של NVIDIA (GET – לא נחסם)
-JOBS_URL = (
+SEARCH_URL = (
     "https://nvidia.wd5.myworkdayjobs.com"
-    "/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs"
-    "?limit=50&offset=0"
+    "/en-US/NVIDIAExternalCareerSite"
+    "?locations=Israel"
 )
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
-    "Accept": "application/json",
 }
 
 def load_seen():
@@ -31,7 +30,7 @@ def save_seen(seen):
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    r = requests.post(
+    requests.post(
         url,
         json={
             "chat_id": CHAT_ID,
@@ -40,42 +39,34 @@ def send_telegram(msg):
         },
         timeout=30,
     )
-    r.raise_for_status()
-
-def is_israel_yokneam(job):
-    text = (
-        job.get("title", "")
-        + " "
-        + str(job.get("locations", ""))
-        + " "
-        + str(job.get("externalPath", ""))
-    ).lower()
-
-    return "israel" in text and ("yokneam" in text or "north" in text)
 
 def main():
-    r = requests.get(JOBS_URL, headers=HEADERS, timeout=30)
+    r = requests.get(SEARCH_URL, headers=HEADERS, timeout=30)
     r.raise_for_status()
-    jobs = r.json().get("jobPostings", [])
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    job_links = soup.select("a[data-automation-id='jobTitle']")
 
     seen = load_seen()
     new_items = []
 
-    for job in jobs:
-        if not is_israel_yokneam(job):
+    for a in job_links:
+        title = a.get_text(strip=True)
+        href = a.get("href")
+
+        if not href:
             continue
 
-        path = job.get("externalPath")
-        title = job.get("title", "NVIDIA Job")
+        url = "https://nvidia.wd5.myworkdayjobs.com" + href
+        text = (title + " " + href).lower()
 
-        if path and path not in seen:
-            url = (
-                "https://nvidia.wd5.myworkdayjobs.com"
-                "/en-US/NVIDIAExternalCareerSite"
-                + path
-            )
+        # סינון יוקנעם / צפון
+        if "yokneam" not in text and "north" not in text:
+            continue
+
+        if url not in seen:
             new_items.append(f"{title}\n{url}")
-            seen.add(path)
+            seen.add(url)
 
     if not new_items:
         save_seen(seen)
